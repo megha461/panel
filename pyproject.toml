@@ -1,0 +1,26 @@
+[project]
+name = "panel"
+version = "0.1.0"
+description = "AI interview engine — practice mode and screening mode over one evidence-cited pipeline"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.0",
+    "anthropic>=0.40",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+panel = "panel.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["panel*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
