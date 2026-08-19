@@ -38,4 +38,8 @@ export const api = {
   answer: (id, text) =>
     request(`/api/sessions/${id}/answer`, { method: 'POST', body: JSON.stringify({ text }) }),
   report: (id) => request(`/api/sessions/${id}/report`),
+  history: (role) =>
+    request(`/api/history${role ? `?role=${encodeURIComponent(role)}` : ''}`),
+  pastReport: (id) => request(`/api/history/${id}`),
+  trends: (planHash) => request(`/api/trends/${planHash}`),
 }

@@ -6,9 +6,11 @@ import argparse
 import sys
 from pathlib import Path
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel as RichPanel
 from rich.prompt import Prompt
+from rich.table import Table
 
 from panel.config import load_settings
 from panel.demo_answers import scripted_candidate
@@ -16,7 +18,8 @@ from panel.engine.conductor import Conductor
 from panel.llm import get_reasoner
 from panel.models import InterviewType, Mode
 from panel.planning.compiler import compile_plan
-from panel.scoring.report import coaching_report, screening_report
+from panel.scoring.report import build_report, render_coaching_text, render_screening_text
+from panel.storage import db
 from panel.transports.text import run_interview
 
 console = Console()
@@ -73,13 +76,27 @@ def _run(args, mode: Mode) -> int:
 
     scored = run_interview(conductor, say=_say, listen=_listen)
 
+    # Build the report once, then record and render it — a terminal interview
+    # belongs in the history the same as a browser one.
+    report = build_report(scored, plan, reasoner)
+    conn = db.connect(load_settings().db_path)
+    try:
+        db.save_interview(conn, report, plan)
+        runs = db.comparable_runs(conn, plan.plan_hash)
+    finally:
+        conn.close()
+
     console.print()
-    report = (
-        coaching_report(scored, plan, reasoner)
+    console.print(
+        render_coaching_text(report)
         if mode is Mode.PRACTICE
-        else screening_report(scored, plan)
+        else render_screening_text(report)
     )
-    console.print(report)
+    if runs > 1:
+        console.print(
+            f"\n[dim]Run {runs} against rubric {plan.plan_hash}. "
+            "`panel history` shows the progression.[/dim]"
+        )
     return 0
 
 
@@ -89,6 +106,64 @@ def cmd_practice(args) -> int:
 
 def cmd_screen(args) -> int:
     return _run(args, Mode.SCREENING)
+
+
+def cmd_history(args) -> int:
+    """Past interviews, and progress within a single rubric version."""
+    settings = load_settings()
+    conn = db.connect(settings.db_path)
+    try:
+        interviews = db.list_interviews(conn, role=args.role, limit=args.limit)
+        if not interviews:
+            console.print(
+                "[yellow]No interviews recorded yet.[/yellow] Finish one with "
+                "`panel practice` and it will appear here."
+            )
+            return 0
+
+        table = Table(box=box.SIMPLE, header_style="", pad_edge=False)
+        table.add_column("When", no_wrap=True)
+        table.add_column("Role", no_wrap=True, max_width=24)
+        table.add_column("Mode", no_wrap=True)
+        table.add_column("Overall", no_wrap=True, justify="right")
+        table.add_column("Coverage", no_wrap=True, justify="right")
+        table.add_column("Rubric", no_wrap=True)
+        for row in interviews:
+            table.add_row(
+                row.created_at[:16].replace("T", " "),
+                row.role,
+                row.mode,
+                "—" if row.overall is None else f"{row.overall}/4",
+                f"{int(row.coverage * 100)}%",
+                row.plan_hash,
+            )
+        console.print(table)
+
+        # Progress is only meaningful within one rubric version.
+        latest = interviews[0].plan_hash
+        runs = db.comparable_runs(conn, latest)
+        if runs < 2:
+            console.print(
+                f"\n[dim]Rubric {latest} has {runs} run. Two or more against the "
+                "same rubric are needed before progress means anything.[/dim]"
+            )
+            return 0
+
+        console.print(f"\n[bold]Progress across {runs} runs of rubric {latest}[/bold]")
+        for trend in db.trends(conn, latest):
+            marks = " ".join(
+                "·" if point.level is None else str(point.level) for point in trend.points
+            )
+            change = trend.change
+            delta = "" if change is None else f"  {change:+d}" if change else "  ="
+            console.print(f"  {trend.name:<28} {marks}{delta}")
+        console.print(
+            "\n[dim]· = not observed in that run. Only runs against this rubric "
+            "are shown; other versions are not comparable.[/dim]"
+        )
+        return 0
+    finally:
+        conn.close()
 
 
 def cmd_demo(args) -> int:
@@ -105,10 +180,17 @@ def cmd_demo(args) -> int:
 
     scored = run_interview(conductor, say=_say, listen=scripted)
 
+    # Both renderings from one report, so the demo shows how the two modes differ
+    # without pretending they came from different interviews.
+    report = build_report(scored, plan, reasoner)
     console.print()
-    console.print(coaching_report(scored, plan, reasoner))
+    console.print(render_coaching_text(report))
     console.print("\n\n")
-    console.print(screening_report(scored, plan))
+    console.print(render_screening_text(report))
+    console.print(
+        "\n[dim]Not recorded: the demo answers are scripted, and mixing them into "
+        "your history would corrupt the progress trend it exists to show.[/dim]"
+    )
     return 0
 
 
@@ -137,6 +219,11 @@ def main(argv: list[str] | None = None) -> int:
     add_common(
         subparsers.add_parser("demo", help="Scripted end-to-end run, no key required")
     ).set_defaults(func=cmd_demo)
+
+    history = subparsers.add_parser("history", help="Past interviews and progress")
+    history.add_argument("--role", help="Only show interviews for this role")
+    history.add_argument("--limit", type=int, default=20)
+    history.set_defaults(func=cmd_history)
 
     args = parser.parse_args(argv)
     return args.func(args)

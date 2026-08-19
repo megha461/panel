@@ -13,7 +13,7 @@ function Scale({ level }) {
   )
 }
 
-export default function Report({ report, onRestart }) {
+export default function Report({ report, onRestart, restartLabel = 'New interview' }) {
   // The signature: clicking a citation lights the turn it came from and brings it
   // into view, so a score can always be walked back to the thing the candidate
   // actually said.
@@ -162,7 +162,7 @@ export default function Report({ report, onRestart }) {
         </div>
 
         <div className="actions">
-          <button onClick={onRestart}>New interview</button>
+          <button onClick={onRestart}>{restartLabel}</button>
         </div>
 
         <p className="footnote">

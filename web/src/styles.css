@@ -510,6 +510,92 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .footnote { margin-top: calc(var(--step) * 4); font-size: 12px; line-height: 1.6;
   color: #5d6675; max-width: 70ch; }
 
+/* -------------------------------------------------------------- history */
+
+.linkish {
+  background: none;
+  border: 1px solid var(--line-dark);
+  color: #b9c1cd;
+  padding: 5px 11px;
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.linkish:hover { color: #e6e9ee; border-color: var(--mute); }
+
+.trends { margin-bottom: calc(var(--step) * 4); }
+.trends h2 {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #5d6675;
+  font-weight: 500;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line-light);
+}
+
+.trend-row {
+  display: grid;
+  grid-template-columns: 1fr auto 84px;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line-light);
+}
+.trend-name { font-size: 14px; }
+.trend-runs { display: flex; gap: 4px; }
+
+/* One cell per run, in order. The level is the content, so the sequence reads
+   as a sentence rather than needing a legend. */
+.trend-cell {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  border: 1px solid var(--graphite);
+  border-radius: 1px;
+  background: var(--paper-hi);
+}
+.trend-cell.none {
+  border-style: dashed;
+  border-color: var(--mute);
+  color: var(--mute);
+}
+
+.delta { font-family: var(--mono); font-size: 11px; text-align: right; }
+.delta.up { color: #2f7d55; }
+.delta.down { color: #a8452f; }
+.delta.flat { color: #5d6675; }
+
+table.history {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: calc(var(--step) * 2);
+  font-size: 14px;
+}
+table.history th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5d6675;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-light);
+}
+table.history td { padding: 11px 10px; border-bottom: 1px solid var(--line-light); }
+table.history tbody tr { cursor: pointer; }
+table.history tbody tr:hover,
+table.history tbody tr:focus-visible { background: var(--paper-hi); }
+table.history .num { text-align: right; font-variant-numeric: tabular-nums; }
+table.history .hash { font-family: var(--mono); font-size: 11px; color: #5d6675; }
+
 /* ------------------------------------------------------------ responsive */
 
 @media (max-width: 900px) {

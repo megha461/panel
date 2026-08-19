@@ -10,7 +10,9 @@ from panel.demo_answers import DEMO_ANSWERS, NO_MORE
 
 
 @pytest.fixture
-def client():
+def client(tmp_path, monkeypatch):
+    # Each test gets its own store; the lifespan opens it on client entry.
+    monkeypatch.setenv("PANEL_DB", str(tmp_path / "panel.db"))
     SESSIONS.clear()
     with TestClient(app) as c:
         yield c
@@ -149,6 +151,90 @@ class TestReport:
 
         assert any(e["coaching"] for e in practice_report["competencies"])
         assert all(e["coaching"] is None for e in screening_report["competencies"])
+
+
+class TestHistory:
+    def test_history_is_empty_before_anything_finishes(self, client):
+        assert client.get("/api/history").json()["interviews"] == []
+
+    def test_a_finished_interview_is_recorded_without_being_asked_for(self, client):
+        body = _start(client)
+        _run_to_completion(client, body["session_id"], body["step"])
+
+        # Note: no call to /report here — finishing is what records it.
+        interviews = client.get("/api/history").json()["interviews"]
+        assert len(interviews) == 1
+        assert interviews[0]["plan_hash"] == body["plan"]["plan_hash"]
+        assert interviews[0]["role"] == "Backend Engineer"
+
+    def test_an_abandoned_interview_is_not_recorded(self, client):
+        body = _start(client)
+        client.post(
+            f"/api/sessions/{body['session_id']}/answer",
+            json={"text": _answer_for(body["step"])},
+        )
+        client.delete(f"/api/sessions/{body['session_id']}")
+
+        assert client.get("/api/history").json()["interviews"] == []
+
+    def test_past_report_round_trips_with_citations(self, client):
+        body = _start(client, mode="screening")
+        _run_to_completion(client, body["session_id"], body["step"])
+        interview_id = client.get("/api/history").json()["interviews"][0]["id"]
+
+        report = client.get(f"/api/history/{interview_id}").json()
+        assert report["plan_hash"] == body["plan"]["plan_hash"]
+        transcript = "\n".join(t["text"] for t in report["transcript"]["turns"])
+        for entry in report["competencies"]:
+            for item in entry["supporting"]:
+                assert item["quote"] in transcript
+
+    def test_unknown_interview_is_404(self, client):
+        assert client.get("/api/history/9999").status_code == 404
+
+    def test_history_can_be_filtered_by_role(self, client):
+        a = _start(client, role="Backend Engineer")
+        _run_to_completion(client, a["session_id"], a["step"])
+        b = _start(client, role="Data Scientist")
+        _run_to_completion(client, b["session_id"], b["step"])
+
+        filtered = client.get("/api/history", params={"role": "Data Scientist"}).json()
+        assert [i["role"] for i in filtered["interviews"]] == ["Data Scientist"]
+        assert len(client.get("/api/history").json()["interviews"]) == 2
+
+
+class TestTrends:
+    def test_trend_accumulates_across_runs_of_one_rubric(self, client):
+        first = _start(client)
+        _run_to_completion(client, first["session_id"], first["step"])
+        second = _start(client)
+        _run_to_completion(client, second["session_id"], second["step"])
+
+        plan_hash = first["plan"]["plan_hash"]
+        assert second["plan"]["plan_hash"] == plan_hash
+
+        trends = client.get(f"/api/trends/{plan_hash}").json()
+        assert trends["runs"] == 2
+        assert trends["competencies"]
+        assert all(len(c["points"]) == 2 for c in trends["competencies"])
+
+    def test_a_different_rubric_is_excluded_from_the_trend(self, client):
+        behavioral = _start(client, interview_type="behavioral")
+        _run_to_completion(client, behavioral["session_id"], behavioral["step"])
+        technical = _start(client, interview_type="technical_verbal")
+        _run_to_completion(client, technical["session_id"], technical["step"])
+
+        hash_a = behavioral["plan"]["plan_hash"]
+        assert technical["plan"]["plan_hash"] != hash_a
+
+        trends = client.get(f"/api/trends/{hash_a}").json()
+        assert trends["runs"] == 1
+        assert "not comparable" in trends["note"]
+
+    def test_unknown_rubric_returns_an_empty_trend_not_an_error(self, client):
+        trends = client.get("/api/trends/deadbeefdeadbeef").json()
+        assert trends["runs"] == 0
+        assert trends["competencies"] == []
 
 
 class TestSessionState:

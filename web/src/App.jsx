@@ -3,10 +3,12 @@ import { api } from './api.js'
 import Setup from './components/Setup.jsx'
 import Call from './components/Call.jsx'
 import Report from './components/Report.jsx'
+import History from './components/History.jsx'
 
 const IDLE = 'idle'
 const RUNNING = 'running'
 const DONE = 'done'
+const HISTORY = 'history'
 
 function clock(seconds) {
   const m = Math.floor(seconds / 60)
@@ -25,6 +27,7 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [elapsed, setElapsed] = useState(0)
+  const [fromHistory, setFromHistory] = useState(false)
   const startedAt = useRef(null)
 
   useEffect(() => {
@@ -94,6 +97,24 @@ export default function App() {
     setReport(null)
     setError(null)
     setElapsed(0)
+    setFromHistory(false)
+  }
+
+  async function openPast(interviewId) {
+    setError(null)
+    try {
+      setReport(await api.pastReport(interviewId))
+      setFromHistory(true)
+      setPhase(DONE)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  function showHistory() {
+    setReport(null)
+    setFromHistory(false)
+    setPhase(HISTORY)
   }
 
   const overTime = plan ? elapsed > plan.target_minutes * 60 : false
@@ -107,6 +128,11 @@ export default function App() {
         {plan && <span className="mono">rubric {plan.plan_hash}</span>}
         {phase === RUNNING && (
           <span className={`clock${overTime ? ' over' : ''}`}>{clock(elapsed)}</span>
+        )}
+        {phase !== RUNNING && (
+          <button className="linkish" onClick={phase === HISTORY ? restart : showHistory}>
+            {phase === HISTORY ? 'New interview' : 'History'}
+          </button>
         )}
       </header>
 
@@ -130,7 +156,15 @@ export default function App() {
         />
       )}
 
-      {phase === DONE && report && <Report report={report} onRestart={restart} />}
+      {phase === HISTORY && <History onOpen={openPast} onBack={restart} />}
+
+      {phase === DONE && report && (
+        <Report
+          report={report}
+          onRestart={fromHistory ? showHistory : restart}
+          restartLabel={fromHistory ? 'Back to history' : 'New interview'}
+        />
+      )}
     </div>
   )
 }

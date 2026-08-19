@@ -12,11 +12,13 @@ health endpoint rather than left to be discovered.
 
 from __future__ import annotations
 
+import sqlite3
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -28,8 +30,29 @@ from panel.models import Decision, InterviewPlan, InterviewType, Mode, Transcrip
 from panel.planning.compiler import compile_plan
 from panel.scoring.report import Report, build_report
 from panel.scoring.scorer import score_interview
+from panel.storage import db
 
-app = FastAPI(title="Panel", version="0.1.0")
+_conn: sqlite3.Connection | None = None
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global _conn
+    _conn = db.connect(load_settings().db_path)
+    try:
+        yield
+    finally:
+        _conn.close()
+        _conn = None
+
+
+def store() -> sqlite3.Connection:
+    if _conn is None:  # pragma: no cover — only reachable outside the app lifespan
+        raise HTTPException(503, "Store is not open.")
+    return _conn
+
+
+app = FastAPI(title="Panel", version="0.1.0", lifespan=lifespan)
 
 # The Vite dev server. Same-origin in production, where the API serves the build.
 app.add_middleware(
@@ -151,7 +174,7 @@ def _session(session_id: str) -> Session:
 
 
 def _finalise(session: Session) -> Report:
-    """Score once, then serve the cached report."""
+    """Score once, persist once, then serve the cached report."""
     if session.report is None:
         scored = score_interview(
             plan=session.plan,
@@ -162,6 +185,9 @@ def _finalise(session: Session) -> Report:
             session_id=session.conductor.session_id,
         )
         session.report = build_report(scored, session.plan, session.reasoner)
+        # Persisting here rather than on the report route means an interview is
+        # recorded when it finishes, whether or not anyone asks to see it.
+        db.save_interview(store(), session.report, session.plan)
     return session.report
 
 
@@ -246,4 +272,56 @@ def report(session_id: str) -> Report:
 
 @app.delete("/api/sessions/{session_id}", status_code=204)
 def end_session(session_id: str) -> None:
+    """Drop the in-memory session. A finished interview stays in the store."""
     SESSIONS.pop(session_id, None)
+
+
+# --------------------------------------------------------------------------
+# History
+# --------------------------------------------------------------------------
+
+
+class HistoryOut(BaseModel):
+    interviews: list[db.InterviewSummary]
+
+
+class TrendsOut(BaseModel):
+    plan_hash: str
+    runs: int
+    competencies: list[db.CompetencyTrend]
+    note: str
+
+
+@app.get("/api/history", response_model=HistoryOut)
+def history(
+    role: str | None = None, limit: int = Query(default=50, ge=1, le=500)
+) -> HistoryOut:
+    return HistoryOut(interviews=db.list_interviews(store(), role=role, limit=limit))
+
+
+@app.get("/api/history/{interview_id}", response_model=Report)
+def past_report(interview_id: int) -> Report:
+    report = db.get_report(store(), interview_id)
+    if report is None:
+        raise HTTPException(404, "No interview with that id.")
+    return report
+
+
+@app.get("/api/trends/{plan_hash}", response_model=TrendsOut)
+def trends(plan_hash: str) -> TrendsOut:
+    """Progress over runs of one rubric version.
+
+    Scoped to a single plan_hash on purpose: interviews compiled from different
+    criteria are not comparable, and plotting them together would hide that.
+    """
+    conn = store()
+    return TrendsOut(
+        plan_hash=plan_hash,
+        runs=db.comparable_runs(conn, plan_hash),
+        competencies=db.trends(conn, plan_hash),
+        note=(
+            "Only interviews assessed against rubric "
+            f"{plan_hash} are included — scores from other rubric versions are "
+            "not comparable."
+        ),
+    )

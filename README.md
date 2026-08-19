@@ -50,6 +50,25 @@ panel demo
 
 `--type` is `behavioral`, `technical_verbal`, or `mixed`.
 
+### History
+
+```bash
+panel history
+```
+
+Completed interviews are recorded to SQLite (`data/panel.db`), append-only — there
+is no update or delete path, because a scorecard you can quietly edit afterwards
+isn't a record. `panel history` lists past runs and shows per-competency progress;
+the web UI has the same view.
+
+**Progress is only shown within one `plan_hash`.** Two interviews compiled from
+different criteria produce scores that look comparable and aren't, and charting
+them on one line would launder that past you. Comparability is what freezing the
+plan bought — spending it here would waste it.
+
+Not-observed stays NULL all the way into SQL, so `AVG` skips it. A competency the
+interview never reached is never averaged in as a zero.
+
 ### Video-call UI
 
 ```bash
@@ -139,11 +158,16 @@ provider's key to turn one on.
 ## Status
 
 Verified: domain models, rubric library, plan compiler, conductor, extractor,
-scorer, both reports, text transport, CLI, HTTP API, video-call UI. 60 tests.
+scorer, both reports, text transport, CLI, HTTP API, video-call UI, persistence
+and history. 81 tests.
 
 Scaffolded but unverified: realtime voice + avatar.
 
 Not started: live-coding interview type.
+
+Known limitation: an interview *in progress* lives only in memory, so restarting
+the server loses it. Finished interviews are persisted. Resuming a half-finished
+interview isn't supported.
 
 ```bash
 .venv/bin/python -m pytest
