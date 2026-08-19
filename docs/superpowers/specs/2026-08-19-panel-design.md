@@ -153,9 +153,26 @@ faster-whisper / whisper.cpp.
 5. Extractor + scorer
 6. Reports
 7. Text transport + CLI — **verify: full interview end-to-end, no API key**
-8. *(phase 2)* FastAPI + React video-call UI
-9. *(phase 2)* LiveKit realtime voice + avatar
+8. FastAPI + React video-call UI — **done, verified in browser**
+9. LiveKit realtime voice + avatar — **scaffolded, unverified (needs paid credentials)**
 10. *(phase 3)* Live coding interview type
+
+## Phase 2 decisions
+
+**Reports became one object with several renderings.** Adding the browser would
+otherwise have meant a second copy of "how do we describe a score". `build_report`
+is the source of truth; the CLI renders it as text, the API serialises it as JSON.
+
+**No LLM in the voice loop.** LiveKit's standard shape is STT → LLM → TTS, with the
+model deciding what to say. That is wrong here: the conductor has already decided,
+from a frozen plan, and a model in the loop would improvise questions outside it —
+breaking the comparability guarantee that the whole design exists to protect.
+`AgentSession` takes `llm` as optional, so the wiring is STT → Conductor → TTS. The
+reasoner still runs for assessment and scoring, off the speech path.
+
+**Camera is decoration, not data.** The web UI shows your own camera for realism
+and self-review. The stream never leaves the browser. This is the design stance
+from the fairness section made concrete in the product.
 
 ## Non-goals
 

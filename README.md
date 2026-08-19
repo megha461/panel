@@ -40,13 +40,30 @@ So three rules are structural rather than requested politely in a prompt:
 
 ## Usage
 
+### Terminal
+
 ```bash
 panel practice --role "Backend Engineer" --type behavioral --minutes 20
 panel screen   --role "Backend Engineer" --resume cv.txt --jd role.txt
-panel demo                                    # scripted, deterministic, no key
+panel demo
 ```
 
 `--type` is `behavioral`, `technical_verbal`, or `mixed`.
+
+### Video-call UI
+
+```bash
+./dev.sh
+```
+
+Engine on :8040, web app on :5193. The call is a real video-call layout — your
+camera in the corner, an interviewer tile, live transcript, timer — with answers
+typed until the voice layer lands. Your camera stream stays in the browser: it is
+never uploaded, recorded, or scored.
+
+The report inverts to a paper surface, because it is a different object from the
+conversation: a record you file rather than a call you sit in. Every score carries
+its citations, and clicking one jumps to the exact turn it came from.
 
 ## Architecture
 
@@ -92,13 +109,41 @@ the weakest-evidence part of commercial AI interviewing and the EU AI Act bans
 emotion recognition in the workplace. Video is for realism and self-review, never a
 scored signal.
 
+## Realtime voice — scaffolded, not verified
+
+`panel/transports/realtime.py` drives the same conductor over LiveKit Agents. It is
+written against livekit-agents 1.6.10 with the API surface verified by
+introspection, but **it has never been run against a live room** — that needs paid
+credentials this machine doesn't have. The credential gate is tested; the call path
+is not. Treat it as reviewed scaffolding.
+
+The design decision in it is worth knowing: **there is no LLM in the voice loop.**
+LiveKit's usual shape is STT → LLM → TTS, with the model choosing what to say. That
+would let it improvise questions outside the frozen plan and break the guarantee
+that two candidates were assessed against identical criteria. `AgentSession` takes
+`llm` as optional, so the wiring is STT → Conductor → TTS. The reasoner still runs,
+just off the speech path where its latency can't stall the conversation.
+
+To try it:
+
+```bash
+pip install -e ".[realtime]"
+```
+
+Then set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `DEEPGRAM_API_KEY`,
+`CARTESIA_API_KEY`, `ANTHROPIC_API_KEY`. Missing ones are reported by name with what
+each buys. Avatars are off by default (`PANEL_AVATAR=none`) because they bill
+$0.10–$0.37 per active minute; set `tavus`, `anam`, `simli`, or `hedra` plus that
+provider's key to turn one on.
+
 ## Status
 
-Built: domain models, rubric library, plan compiler, conductor, extractor, scorer,
-both reports, text transport, CLI. 39 tests.
+Verified: domain models, rubric library, plan compiler, conductor, extractor,
+scorer, both reports, text transport, CLI, HTTP API, video-call UI. 60 tests.
 
-Next: FastAPI + React video-call UI; LiveKit realtime voice with a swappable avatar
-plugin; live-coding interview type.
+Scaffolded but unverified: realtime voice + avatar.
+
+Not started: live-coding interview type.
 
 ```bash
 .venv/bin/python -m pytest

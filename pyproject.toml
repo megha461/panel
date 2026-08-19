@@ -10,7 +10,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "httpx"]
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.30"]
+# Realtime voice. Installed separately because none of it is needed for the
+# text transport, the API, or the tests.
+realtime = [
+    "livekit-agents>=1.6",
+    "livekit-plugins-deepgram",
+    "livekit-plugins-cartesia",
+    "livekit-plugins-silero",
+]
 
 [project.scripts]
 panel = "panel.cli:main"
