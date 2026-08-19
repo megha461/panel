@@ -16,6 +16,8 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 
+from pydantic import BaseModel
+
 from panel.llm.base import Reasoner
 from panel.models import (
     Decision,
@@ -29,6 +31,17 @@ from panel.models import (
 
 # Rough pacing assumption: one question-and-answer exchange per two minutes.
 MINUTES_PER_EXCHANGE = 2
+
+
+class Progress(BaseModel):
+    """Where the interview has got to. Any transport wants this for its UI."""
+
+    exchanges: int
+    exchange_budget: int
+    competency_index: int
+    competency_total: int
+    competency_name: str | None = None
+    closed: bool = False
 
 
 @dataclass
@@ -235,3 +248,18 @@ class Conductor:
     def coverage(self) -> dict[str, set[str]]:
         """Critical points evidenced so far, per competency."""
         return {c.id: self._covered.get(c.id, set()) for c in self.plan.competencies}
+
+    @property
+    def progress(self) -> Progress:
+        current = self._current
+        name = (
+            self.plan.competency(current.competency_id).name if current is not None else None
+        )
+        return Progress(
+            exchanges=self._exchanges,
+            exchange_budget=self.exchange_budget,
+            competency_index=min(self._competency_i, len(self.plan.competencies) - 1),
+            competency_total=len(self.plan.competencies),
+            competency_name=name,
+            closed=self._closed,
+        )
