@@ -104,10 +104,10 @@ resume + JD ─→ [PlanCompiler] ─→ InterviewPlan (hashed, FROZEN)
 ## Demo mode
 
 With no `ANTHROPIC_API_KEY`, a heuristic reasoner runs the same interfaces. It is
-signal detection, not an imitation of a language model — it looks for the six
+signal detection, not an imitation of a language model — it looks for the seven
 observable markers the rubrics are written around (specificity, first-person
-agency, stated outcomes, considered alternatives, reflection, method) and reports
-honestly on what it can't see.
+agency, stated outcomes, considered alternatives, reflection, method, prevention)
+and reports honestly on what it can't see.
 
 **Its recall and precision are both genuinely lower than the LLM path.** Anchors
 phrased outside those seven signals may extract no evidence from a strong answer,
@@ -163,7 +163,7 @@ provider's key to turn one on.
 
 Verified: domain models, rubric library, plan compiler, conductor, extractor,
 scorer, both reports, text transport, CLI, HTTP API, video-call UI, persistence
-and history. 81 tests.
+and history. 86 tests.
 
 Scaffolded but unverified: realtime voice + avatar.
 
