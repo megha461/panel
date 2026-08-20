@@ -229,3 +229,70 @@ class TestEndToEnd:
         assert "NOT OBSERVED" in screening or "Evidence:" in screening
         for competency in plan.competencies:
             assert competency.name in coaching
+
+
+class TestCitationsPointAtTheRightThing:
+    """A citation that does not evidence its own claim is worse than none.
+
+    Two critical points often map to the same signal, and the naive
+    highest-scoring-sentence pick cited one span under both claims — which made
+    the evidence look padded and attached a quote to something it did not show.
+    """
+
+    def setup_method(self):
+        self.reasoner = HeuristicReasoner()
+
+    def _assess(self, competency_id, text):
+        from panel.planning.library import all_competencies
+
+        competency = all_competencies()[competency_id]
+        turn = _turn(text, competency_id=competency_id)
+        return competency, self.reasoner.assess_answer(
+            competency=competency, question="q", answer=turn
+        )
+
+    def test_distinct_points_get_distinct_spans_when_the_answer_has_them(self):
+        from panel.demo_answers import DEMO_ANSWERS
+
+        _, assessment = self._assess("debugging", DEMO_ANSWERS["debugging"][0])
+        quotes = [e.quote for e in assessment.evidence]
+        assert len(quotes) == len(set(quotes)), (
+            "the same span was cited under two different claims"
+        )
+
+    def test_a_strong_debugging_answer_is_not_scored_as_developing(self):
+        """Hypothesis, narrowing, confirmation and prevention are all present."""
+        from panel.demo_answers import DEMO_ANSWERS
+
+        competency, assessment = self._assess("debugging", DEMO_ANSWERS["debugging"][0])
+        assert len(assessment.covered_points) == len(competency.critical_points)
+        assert not assessment.missing_points
+
+    def test_prevention_is_detected_separately_from_reflection(self):
+        from panel.llm.heuristic import _required_signal, _signals
+
+        assert _required_signal("What stops it recurring") == "prevention"
+        assert _required_signal("Knowing what you know now, would change") == "reflection"
+        # Closing the gap is prevention even with no hindsight language present.
+        assert "prevention" in _signals(
+            "I changed the signature to make the unsafe call impossible."
+        )
+
+    def test_confirming_a_cause_is_method_not_outcome(self):
+        from panel.llm.heuristic import _required_signal
+
+        assert _required_signal("How they confirmed the cause rather than assumed it") == "method"
+
+    def test_report_shows_a_shared_span_once_with_both_claims(self):
+        from panel.models import Evidence
+        from panel.scoring.report import group_citations
+
+        shared = "I decided to fix the cache key."
+        grouped = group_citations([
+            Evidence(competency_id="ownership", turn_index=1, quote=shared, claim="Addresses: A"),
+            Evidence(competency_id="ownership", turn_index=1, quote=shared, claim="Addresses: B"),
+            Evidence(competency_id="ownership", turn_index=3, quote="Other span.", claim="Addresses: C"),
+        ])
+        assert len(grouped) == 2
+        first = next(g for g in grouped if g[1] == shared)
+        assert first[2] == ["Addresses: A", "Addresses: B"]

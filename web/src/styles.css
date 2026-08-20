@@ -476,7 +476,8 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .cite.against { border-left-color: var(--mute); }
 .cite .tag { font-family: var(--mono); font-size: 10px; color: #5d6675; padding-top: 2px; }
 .cite blockquote { margin: 0 0 5px; font-size: 14px; line-height: 1.5; }
-.cite .claim { font-size: 12px; color: #5d6675; }
+.cite .claim { display: block; font-size: 12px; color: #5d6675; }
+.cite .claim + .claim { margin-top: 3px; }
 
 .coach { margin-top: 16px; display: grid; gap: 12px; }
 .coach h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 10px;

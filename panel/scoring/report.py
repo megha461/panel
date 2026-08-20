@@ -53,6 +53,22 @@ class Report(BaseModel):
     transcript: Transcript
 
 
+def group_citations(items: list[Evidence]) -> list[tuple[int, str, list[str]]]:
+    """Collapse repeated spans into one citation carrying several claims.
+
+    One sentence can genuinely evidence two critical points — an answer with a
+    single first-person sentence often carries both "their own action" and "went
+    past what was assigned". Listing the identical quote twice reads as padded
+    evidence even when the detection is right, so the quote is shown once with
+    each claim under it. Grouping happens here rather than in the data because
+    scoring reads claims individually.
+    """
+    grouped: dict[tuple[int, str], list[str]] = {}
+    for e in items:
+        grouped.setdefault((e.turn_index, e.quote), []).append(e.claim)
+    return [(turn, quote, claims) for (turn, quote), claims in grouped.items()]
+
+
 def build_report(
     scored: ScoredInterview, plan: InterviewPlan, reasoner: Reasoner | None = None
 ) -> Report:
@@ -203,12 +219,14 @@ def render_screening_text(report: Report) -> str:
     for entry in report.competencies:
         label = entry.label if entry.observed else "NOT OBSERVED"
         out += [f"{entry.name}   {_bar(entry.level)}   {label}", f"  {entry.rationale}"]
-        if entry.supporting:
-            out.append("  Evidence:")
-            out += [f'    [turn {e.turn_index}] "{e.quote}"\n      → {e.claim}' for e in entry.supporting]
-        if entry.undermining:
-            out.append("  Counter-evidence:")
-            out += [f'    [turn {e.turn_index}] "{e.quote}"\n      → {e.claim}' for e in entry.undermining]
+        for label, items in (("Evidence", entry.supporting),
+                             ("Counter-evidence", entry.undermining)):
+            if not items:
+                continue
+            out.append(f"  {label}:")
+            for turn, quote, claims in group_citations(items):
+                out.append(f'    [turn {turn}] "{quote}"')
+                out += [f"      → {c}" for c in claims]
         out.append("")
 
     out += ["-" * 60, f"RECOMMENDATION: {report.recommendation}", ""]

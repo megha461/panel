@@ -110,9 +110,13 @@ agency, stated outcomes, considered alternatives, reflection, method) and report
 honestly on what it can't see.
 
 **Its recall and precision are both genuinely lower than the LLM path.** Anchors
-phrased outside those six signals may extract no evidence from a strong answer, and
-because it falls back to token overlap it will sometimes attach a real quote to the
-wrong critical point. Treat heuristic-mode levels as indicative, not defensible.
+phrased outside those seven signals may extract no evidence from a strong answer,
+and because it falls back to token overlap it can still attach a quote to the wrong
+critical point. Treat heuristic-mode levels as indicative, not defensible.
+
+It will not, however, cite one span under two different claims: quote selection
+prefers a span not already used for another point in the same answer, and where a
+sentence genuinely evidences two points the report shows it once with both claims.
 
 It exists so the rubric layer — where quality actually lives — can be iterated for
 free, and so the tests are deterministic. It is not the product.

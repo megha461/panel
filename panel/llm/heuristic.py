@@ -2,8 +2,8 @@
 
 It is not trying to imitate a language model. It detects the observable signals
 the rubrics are written around — specificity, first-person agency, stated
-outcomes, considered alternatives, reflection — and reports honestly on what it
-can and cannot see. That makes it useful for development, deterministic for
+outcomes, considered alternatives, reflection, method, prevention — and reports
+honestly on what it can and cannot see. That makes it useful for development, deterministic for
 tests, and a real fallback rather than a mock.
 """
 
@@ -43,6 +43,17 @@ _SIGNAL_PATTERNS: dict[str, re.Pattern[str]] = {
         r"took (?:about )?\w+ (?:seconds|minutes|hours|days))\b",
         re.I,
     ),
+    # Closing the gap that allowed the problem, as distinct from reflecting on
+    # it. Ownership's top anchor, Learning's transfer point and Debugging's
+    # recurrence point are all written around this.
+    "prevention": re.compile(
+        r"\b(?:so (?:that )?it (?:can'?t|cannot|never)|make[s]? (?:the|it) \w+ impossible|"
+        r"added? (?:an? )?(?:assertion|test|check|guardrail|monitor|alert)|"
+        r"prevent\w*|stop\w* it (?:from )?(?:happening|recurring)|"
+        r"never happened again|hasn'?t happened since|every time since|"
+        r"changed the (?:signature|type|process)|since then)\b",
+        re.I,
+    ),
     # How they went about it, as distinct from what came out. Debugging and
     # fundamentals anchors are written around this and the other five miss it.
     "method": re.compile(
@@ -70,16 +81,19 @@ _POINT_CUES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"own action|their own|personally|separately from the team|owned|"
                 r"beyond|past what was assigned|nobody asked", re.I),
      "agency"),
-    (re.compile(r"outcome|result|impact|observable|how they knew|confirmed", re.I),
+    (re.compile(r"outcome|result|impact|observable|how they knew", re.I),
      "outcome"),
     (re.compile(r"alternative|rejected|tradeoff|trade-off|constraint|instead|condition", re.I),
      "alternatives"),
-    (re.compile(r"lesson|changed behaviour|changed behavior|transfer|recurr|hindsight|"
+    (re.compile(r"lesson|changed behaviour|changed behavior|hindsight|"
                 r"would change|reflect", re.I),
      "reflection"),
     (re.compile(r"hypothesis|narrowing|strategy|mechanism|methodical|before a fix|"
-                r"survives|deliberate", re.I),
+                r"survives|deliberate|confirmed the cause", re.I),
      "method"),
+    (re.compile(r"recurr|stops it|prevent|guardrail|outlived|transferred|"
+                r"changed the system", re.I),
+     "prevention"),
 ]
 
 # Follow-ups in the interviewer's voice, one bank per signal. Rotated so a long
@@ -108,6 +122,10 @@ _PROBES: dict[str, tuple[str, ...]] = {
     "method": (
         "How did you actually go about working that out?",
         "What told you that was the right explanation and not a guess?",
+    ),
+    "prevention": (
+        "What stops that happening again?",
+        "Did anything change so the same thing can't recur?",
     ),
     "": (
         "Can you say a bit more about that?",
@@ -141,19 +159,40 @@ def _required_signal(point: str) -> str | None:
     return None
 
 
-def _best_quote(text: str, point: str, signal: str | None) -> str | None:
-    """The sentence that most plausibly evidences this point."""
+def _best_quote(
+    text: str, point: str, signal: str | None, used: set[str] | None = None
+) -> str | None:
+    """The sentence that most plausibly evidences this point.
+
+    Prefers a span not already cited for a different point in the same answer.
+    Two critical points often map to the same signal — "a stated hypothesis" and
+    "a deliberate narrowing strategy" are both method — and without this the
+    single highest-scoring sentence gets cited twice under different claims. That
+    reads as padded evidence, which is corrosive in a report whose whole promise
+    is that a citation points at the thing it says it points at.
+
+    Falls back to the best sentence overall when no unused one evidences the
+    point, since one span genuinely can support two claims.
+    """
     sentences = _sentences(text)
     if not sentences:
         return None
+    used = used or set()
     point_words = _words(point)
-    best, best_score = None, 0.0
+
+    best = best_unused = None
+    best_score = best_unused_score = 0.0
     for s in sentences:
         score = len(_words(s) & point_words)
         if signal and _SIGNAL_PATTERNS[signal].search(s):
             score += 2
         if score > best_score:
             best, best_score = s, score
+        if score > best_unused_score and s not in used:
+            best_unused, best_unused_score = s, score
+
+    if best_unused_score > 0:
+        return best_unused
     return best if best_score > 0 else None
 
 
@@ -193,6 +232,7 @@ class HeuristicReasoner:
             )
 
         present = _signals(text)
+        cited: set[str] = set()
         covered: list[str] = []
         missing: list[str] = []
         evidence: list[Evidence] = []
@@ -207,8 +247,9 @@ class HeuristicReasoner:
 
             if is_covered:
                 covered.append(point)
-                quote = _best_quote(text, point, signal)
+                quote = _best_quote(text, point, signal, used=cited)
                 if quote:
+                    cited.add(quote)
                     evidence.append(
                         Evidence(
                             competency_id=competency.id,

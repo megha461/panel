@@ -13,6 +13,21 @@ function Scale({ level }) {
   )
 }
 
+// One sentence can genuinely evidence two critical points, so the same span can
+// arrive twice with different claims. Show the quote once with each claim under
+// it — repeating the quote reads as padded evidence even when detection is right.
+function groupCitations(items) {
+  const grouped = new Map()
+  for (const e of items) {
+    const key = `${e.turn_index}::${e.quote}`
+    if (!grouped.has(key)) {
+      grouped.set(key, { turn_index: e.turn_index, quote: e.quote, against: e.against, claims: [] })
+    }
+    grouped.get(key).claims.push(e.claim)
+  }
+  return [...grouped.values()]
+}
+
 export default function Report({ report, onRestart, restartLabel = 'New interview' }) {
   // The signature: clicking a citation lights the turn it came from and brings it
   // into view, so a score can always be walked back to the thing the candidate
@@ -84,22 +99,27 @@ export default function Report({ report, onRestart, restartLabel = 'New intervie
 
             {(c.supporting.length > 0 || c.undermining.length > 0) && (
               <div className="evidence">
-                {[...c.supporting, ...c.undermining.map((e) => ({ ...e, against: true }))].map(
-                  (e, i) => (
-                    <button
-                      key={`${e.turn_index}-${i}`}
-                      className={`cite${e.against ? ' against' : ''}`}
-                      onClick={() => reveal(e.turn_index)}
-                      onFocus={() => setLit(e.turn_index)}
-                    >
-                      <span className="tag">T{String(e.turn_index).padStart(2, '0')}</span>
-                      <span>
-                        <blockquote>“{e.quote}”</blockquote>
-                        <span className="claim">{e.claim}</span>
-                      </span>
-                    </button>
-                  ),
-                )}
+                {groupCitations([
+                  ...c.supporting,
+                  ...c.undermining.map((e) => ({ ...e, against: true })),
+                ]).map((e, i) => (
+                  <button
+                    key={`${e.turn_index}-${i}`}
+                    className={`cite${e.against ? ' against' : ''}`}
+                    onClick={() => reveal(e.turn_index)}
+                    onFocus={() => setLit(e.turn_index)}
+                  >
+                    <span className="tag">T{String(e.turn_index).padStart(2, '0')}</span>
+                    <span>
+                      <blockquote>“{e.quote}”</blockquote>
+                      {e.claims.map((claim, j) => (
+                        <span className="claim" key={j}>
+                          {claim}
+                        </span>
+                      ))}
+                    </span>
+                  </button>
+                ))}
               </div>
             )}
 
