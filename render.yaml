@@ -1,0 +1,34 @@
+# Render blueprint for the Panel engine.
+#
+# The frontend is not here — it goes to Vercel as a static build. This service is
+# the FastAPI engine only.
+#
+# Why Render rather than a serverless host: the API holds a live Conductor in
+# memory for the length of an interview, and an interview spans many requests.
+# Serverless invocations do not share memory, so the second answer would land on
+# an instance that has never heard of the session.
+services:
+  - type: web
+    name: panel-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -e ".[api]"
+    startCommand: uvicorn panel.api.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.4"
+      # Free instances have an ephemeral filesystem, so interview history resets
+      # whenever the service restarts or wakes from sleep. Writing to /tmp is
+      # honest about that rather than implying the data is durable. A paid
+      # instance with a persistent disk is what makes history survive.
+      - key: PANEL_DB
+        value: /tmp/panel.db
+      # Set to the Vercel URL once the frontend is deployed, e.g.
+      # https://panel-megha591.vercel.app
+      - key: PANEL_CORS_ORIGINS
+        sync: false
+      # Optional. Without it the engine runs its keyless heuristic reasoner and
+      # everything still works.
+      - key: ANTHROPIC_API_KEY
+        sync: false

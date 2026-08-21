@@ -132,6 +132,61 @@ the weakest-evidence part of commercial AI interviewing and the EU AI Act bans
 emotion recognition in the workplace. Video is for realism and self-review, never a
 scored signal.
 
+## Deploying
+
+The frontend and engine are hosted separately, because they need different
+things. A React build is static and belongs on a CDN. The engine holds a live
+`Conductor` in memory for the length of an interview, and an interview spans many
+requests — so it needs a host that keeps a process alive between them. On a
+serverless platform the second answer lands on an instance that has never heard
+of the session.
+
+**Deploy the engine first**, because the frontend has to be built with the
+engine's URL in it.
+
+### 1 — Engine on Render
+
+`render.yaml` is a blueprint: point Render at the repo and it reads the build
+command, start command and health check from there. Set `ANTHROPIC_API_KEY` if
+you want the Claude reasoner; without it the keyless heuristic runs and
+everything still works.
+
+Note the URL it gives you, e.g. `https://panel-api.onrender.com`.
+
+### 2 — Frontend on Vercel
+
+Import the repo, set **Root Directory** to `web`, and add one environment
+variable:
+
+```
+VITE_API_URL = https://panel-api.onrender.com
+```
+
+It is read at build time, not run time — changing it later needs a redeploy.
+
+### 3 — Let the engine trust the frontend
+
+Back on Render, set `PANEL_CORS_ORIGINS` to the Vercel URL and redeploy:
+
+```
+PANEL_CORS_ORIGINS = https://your-app.vercel.app
+```
+
+The API lists origins explicitly rather than allowing `*`, because it has no
+authentication — anyone who can reach it can start an interview.
+
+### What the free tiers cost you
+
+- **The engine sleeps** after about 15 minutes idle. The first request then takes
+  roughly 50 seconds while it wakes. The UI surfaces this as "it may be asleep"
+  rather than a bare failure.
+- **History does not survive a restart.** Free instances have an ephemeral
+  filesystem, so `PANEL_DB` points at `/tmp` and interview history resets when the
+  service restarts or wakes. Progress tracking works within a session of use, not
+  across weeks. A paid instance with a persistent disk is what fixes it.
+- **An interview in progress is lost if the engine restarts**, which is true
+  locally too — it is the in-memory session store, not a hosting artefact.
+
 ## Realtime voice — scaffolded, not verified
 
 `panel/transports/realtime.py` drives the same conductor over LiveKit Agents. It is

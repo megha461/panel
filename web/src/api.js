@@ -1,15 +1,24 @@
 // Thin client. Errors surface the server's own message — a 409 "the interview is
 // already finished" is more useful to read than "Request failed".
 
+// Empty in development, where Vite proxies /api to the local engine. In a
+// deployed build VITE_API_URL points at the engine's own origin, because the
+// frontend and backend are hosted separately.
+const BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+
 async function request(path, options = {}) {
   let response
   try {
-    response = await fetch(path, {
+    response = await fetch(BASE + path, {
       headers: { 'Content-Type': 'application/json' },
       ...options,
     })
   } catch {
-    throw new Error("Can't reach the engine. Is it running on port 8010?")
+    throw new Error(
+      BASE
+        ? `Can't reach the engine at ${BASE}. It may be asleep — try again in a moment.`
+        : "Can't reach the engine. Is it running on port 8040?",
+    )
   }
 
   if (response.status === 204) return null

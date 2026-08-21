@@ -12,6 +12,7 @@ health endpoint rather than left to be discovered.
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
@@ -54,10 +55,20 @@ def store() -> sqlite3.Connection:
 
 app = FastAPI(title="Panel", version="0.1.0", lifespan=lifespan)
 
-# The Vite dev server. Same-origin in production, where the API serves the build.
+# Dev origins by default; deployments add their own via PANEL_CORS_ORIGINS
+# (comma-separated). Listing origins explicitly rather than allowing "*" because
+# the API is unauthenticated — anyone who can reach it can start an interview.
+_ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "PANEL_CORS_ORIGINS", "http://localhost:5193,http://127.0.0.1:5193"
+    ).split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5193", "http://127.0.0.1:5193"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
